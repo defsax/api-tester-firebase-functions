@@ -9,10 +9,17 @@ admin.initializeApp();
 const database = admin.firestore();
 
 const apiVersion = [
-  "https://kennedy-dev1.gojitech.systems",
-  "https://kennedy-dev2.gojitech.systems",
+  {
+    apitype: "dev",
+    endpointURL: "https://kennedy-dev1.gojitech.systems",
+  },
+  {
+    apitype: "staging",
+    endpointURL: "https://kennedy-dev2.gojitech.systems",
+  },
 ];
 
+// switch here to change from dev to staging
 const currentApi = apiVersion[0];
 
 const apis = [
@@ -99,7 +106,7 @@ const apis = [
   },
 ];
 
-const createResult = function (response) {
+const createResult = function (response, api) {
   return {
     // id
     id: uuidv4(),
@@ -108,11 +115,15 @@ const createResult = function (response) {
     // endpoint URL
     endpointURL: response.config.url,
     // api type (dev/staging/production) -> to begin with, everything is dev
-    apiType: "dev",
+    apiType: currentApi.apitype,
+    // apiURL
+    apiURL: Object.values(api)[0],
+    // method
+    method: Object.keys(api)[0],
     // status
     status: response.status,
     // data
-    // data: response.data,
+    data: response.data,
   };
 };
 
@@ -172,7 +183,7 @@ exports.scheduledFunction = functions.pubsub
             }
           })
           .catch((err) => {
-            console.log(err);
+            console.log("Error getting jwt approved:", err);
             return;
           });
       })
@@ -192,7 +203,7 @@ exports.scheduledFunction = functions.pubsub
             return auth;
           })
           .catch((err) => {
-            console.log(err);
+            console.log("Error logging into oscar:", err);
             return;
           });
       })
@@ -200,28 +211,30 @@ exports.scheduledFunction = functions.pubsub
         const batch = database.batch();
 
         apis.forEach((api) => {
-          if (Object.keys(api)[0] === "get") {
-            let result = {};
+          let result = {};
 
-            promises.push(
-              axios
-                .get(currentApi + Object.values(api)[0], auth)
-                .then((res) => {
-                  result = createResult(res);
-                })
-                .catch((err) => {
-                  console.log(err);
-                  result = createResult(err.response);
-                })
-                .then(() => {
-                  count++;
-                  console.log("axios finished.");
-                  batch.update(database.collection("test-results").doc(newID), {
-                    results: firestore.FieldValue.arrayUnion(result),
-                  });
-                })
-            );
-          }
+          promises.push(
+            axios({
+              method: Object.keys(api)[0],
+              url: currentApi.endpointURL + Object.values(api)[0],
+              data: Object.values(api)[1],
+              headers: auth["headers"],
+            })
+              .then((res) => {
+                result = createResult(res, api);
+              })
+              .catch((err) => {
+                console.log(err);
+                result = createResult(err.response, api);
+              })
+              .then(() => {
+                count++;
+                console.log("axios finished.");
+                batch.update(database.collection("test-results").doc(newID), {
+                  results: firestore.FieldValue.arrayUnion(result),
+                });
+              })
+          );
         });
 
         Promise.allSettled(promises).then((resultstest) => {
