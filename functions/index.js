@@ -8,161 +8,95 @@ const { firestore } = require("firebase-admin");
 admin.initializeApp();
 const database = admin.firestore();
 
+const apiVersion = [
+  "https://kennedy-dev1.gojitech.systems",
+  "https://kennedy-dev2.gojitech.systems",
+];
+
+const currentApi = apiVersion[0];
+
 const apis = [
   // OTHER
-  { get: "https://kennedy-dev1.gojitech.systems/api/v1/status" },
-
-  // USER
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/check/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-
-  // AUTH
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/login" },
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/login" },
+  { get: "/api/v1/status" },
 
   // OSCAR REST APIS
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscarrest/providers" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscarrest/notes/1" },
+  { get: "/api/v1/oscarrest/providers" },
+  { get: "/api/v1/oscarrest/notes/1" },
   {
-    post: "http://kennedy-dev1.gojitech.systems/api/v1/oscarrest/prescription",
+    post: "/api/v1/oscar/prescriptions",
+    body: [
+      {
+        demographicNo: 0,
+        drugs: [
+          {
+            drugId: 0,
+            providerNo: 0,
+            brandName: "string",
+            takeMin: 0,
+            takeMax: 0,
+            rxDate: "2021-07-08T16:05:49.404Z",
+            endDate: "2021-07-08T16:05:49.404Z",
+            frequency: "",
+            duration: 0,
+            durationUnit: "",
+            route: "",
+            method: "",
+            prn: false,
+            repeats: 0,
+            quantity: 0,
+            instructions: "string",
+            additionalInstructions: "",
+            archived: false,
+            archivedReason: "",
+            archivedDate: null,
+            strength: 0,
+            strengthUnit: "",
+            externalProvider: "",
+            longTerm: true,
+            noSubstitutions: true,
+          },
+        ],
+      },
+    ],
   },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscarrest/patients" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscarrest/auth" },
-
-  // PROVIDERS
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/providers/me" },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/providers/timeslots",
-  },
-
-  // AUDIOS
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/audios" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/audios/all" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/listwavfile" },
-  {
-    delete:
-      "http://kennedy-dev1.gojitech.systems/api/v1/audios/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-
-  // PRESCRIPTION
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/prescriptions" },
-
-  // DRUGS
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/drugs/search" },
+  { get: "/api/v1/oscarrest/patients" },
+  { get: "/api/v1/oscarrest/auth" },
 
   // PATIENTS
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients" },
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/all" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/1" },
+  { get: "/api/v1/oscar/patients" },
   {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/allergies",
+    post: "/api/v1/oscar/patients",
+    body: {
+      firstName: "James",
+      lastName: "Alex",
+      email: "james.alex@gmail.com",
+      sex: "M",
+      dateOfBirth: "1978-12-31T00:00:00.000Z",
+      address: {
+        province: "ON",
+        postal: "M6H 2L9",
+        city: "Toronto",
+        address: "92 Auburn Ave",
+      },
+    },
+  },
+  { get: "/api/v1/oscar/patients/all" },
+  { get: "/api/v1/oscar/patients/1" },
+  {
+    get: "/api/v1/oscar/patients/14/allergies",
   },
   {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/measurements",
+    get: "/api/v1/oscar/patients/14/measurements",
   },
   {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/documents",
+    get: "/api/v1/oscar/patients/14/documents",
   },
   {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/forms",
+    get: "/api/v1/oscar/patients/14/forms",
   },
   {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/forms/completedEncounterForms",
+    get: "/api/v1/oscar/patients/14/labResults",
   },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/formOptions",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/patients/14/labResults",
-  },
-
-  // TRANSCRIPTION
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/transcriptions?email=test%40gmail.com",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/transcriptions/2f0349ea-8559-4f75-9198-8e2314e29da4",
-  },
-  {
-    delete:
-      "http://kennedy-dev1.gojitech.systems/api/v1/transcriptions/2f0349ea-8559-4f75-9198-8e2314e29da4",
-  },
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/record" },
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/test/inputtext" },
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/record/drug" },
-
-  // Clinicians
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/clinicians" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/clinicians" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/clinicians/all" },
-  {
-    put: "http://kennedy-dev1.gojitech.systems/api/v1/clinicians/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/clinicians/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-  {
-    delete:
-      "http://kennedy-dev1.gojitech.systems/api/v1/clinicians/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/providers/05198f71-cb6e-41cf-a64a-5657e9f89889",
-  },
-
-  // Notes
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/notes" },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/notes?demographicNo=1",
-  },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/notes/1" },
-
-  // Appointments
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/appointments" },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/appointments?demographicNo=14&appointmentDate=2021-07-30",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/appointments/14/history",
-  },
-  {
-    delete: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/appointments/14",
-  },
-  { put: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/appointments/14" },
-
-  // Templates
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/templates" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/templates" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/template/id/123456" },
-  { delete: "http://kennedy-dev1.gojitech.systems/api/v1/template/id/123456" },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/template/name/123456" },
-  {
-    delete: "http://kennedy-dev1.gojitech.systems/api/v1/template/name/1231123",
-  },
-  { put: "http://kennedy-dev1.gojitech.systems/api/v1/template/123456" },
-
-  // Soap Notes
-  { post: "http://kennedy-dev1.gojitech.systems/api/v1/soapnotes" },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/soapnotes?patientId=93413",
-  },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/soapnotes/123456789" },
-  { delete: "http://kennedy-dev1.gojitech.systems/api/v1/soapnotes/123456789" },
-  { put: "http://kennedy-dev1.gojitech.systems/api/v1/soapnotes/123456789" },
-
-  // Oscar Forms
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/forms/allEncounterForms",
-  },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/forms/selectedEncounterForms",
-  },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/forms/formGroups" },
-  {
-    get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/forms/favouriteFormGroup",
-  },
-  { get: "http://kennedy-dev1.gojitech.systems/api/v1/oscar/forms/groupNames" },
 ];
 
 const createResult = function (response) {
@@ -186,12 +120,9 @@ exports.scheduledFunction = functions.pubsub
   .schedule("0 * * * *")
   .onRun((context) => {
     console.log("This should run every 12 hours!");
-    const newID = uuidv4();
-    const newEntry = database.collection("test-results").doc(newID);
     const promises = [];
     let count = 0;
 
-    // let userID;
     const jwt = require("jsonwebtoken");
     const signintoken = jwt.sign(
       {
@@ -201,101 +132,210 @@ exports.scheduledFunction = functions.pubsub
       "secretsignin"
     );
 
-    const newLogin = new Promise((resolve, reject) => {
-      axios
-        .post("http://kennedy-dev1.gojitech.systems/api/v1/login", {
-          token: signintoken,
-          providerNo: functions.config().kennedy.providerno,
+    // const newLogin = new Promise((resolve, reject) => {
+    //   axios
+    //     .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+    //       token: signintoken,
+    //       providerNo: functions.config().kennedy.providerno,
+    //     })
+    //     .then((res) => {
+    //       if (res.data.profile.jwt) {
+    //         console.log("Token approved.");
+
+    //         const accessToken = res.data.profile.jwt;
+    //         const auth = {
+    //           headers: {
+    //             Authorization: `Bearer ${accessToken}`,
+    //           },
+    //         };
+
+    //         resolve(auth);
+    //       }
+    //     })
+    //     .catch((err) => {
+    //       console.log(err);
+    //       // reject(err);
+    //     });
+    // });
+
+    // newLogin.then((auth) => {
+    //   return axios
+    //     .post(
+    //       "https://kennedy-dev1.gojitech.systems/api/v1/oscar/login",
+    //       {
+    //         userName: functions.config().kennedy.name,
+    //         password: functions.config().kennedy.password,
+    //         pin: functions.config().kennedy.pin,
+    //       },
+    //       auth // auth token
+    //     )
+    //     .then((res) => {
+    //       console.log("logged into oscar:", res);
+    //       const newID = uuidv4();
+    //       const newEntry = database.collection("test-results").doc(newID);
+
+    //       newEntry
+    //         .set({
+    //           id: uuidv4(),
+    //           timestamp: firestore.Timestamp.now(),
+    //           results: [],
+    //         })
+    //         .then(() => {
+    //           console.log("Document data set successfully.");
+    //           const batch = database.batch();
+
+    //           apis.forEach((api) => {
+    //             if (Object.keys(api)[0] === "get") {
+    //               let result = {};
+
+    //               promises.push(
+    //                 axios
+    //                   .get(currentApi + Object.values(api)[0], auth)
+    //                   .then((res) => {
+    //                     result = createResult(res);
+    //                   })
+    //                   .catch((err) => {
+    //                     console.log(err);
+    //                     result = createResult(err.response);
+    //                   })
+    //                   .then(() => {
+    //                     count++;
+    //                     console.log("axios finished.");
+    //                     batch.update(
+    //                       database.collection("test-results").doc(newID),
+    //                       {
+    //                         results: firestore.FieldValue.arrayUnion(result),
+    //                       }
+    //                     );
+    //                   })
+    //               );
+    //             }
+    //           });
+
+    //           Promise.allSettled(promises).then((resultstest) => {
+    //             console.log(resultstest);
+    //             console.log(count);
+    //             batch
+    //               .commit()
+    //               .then(() => {
+    //                 console.log("batch committed.");
+    //               })
+    //               .catch((err) => {
+    //                 console.log(err);
+    //               });
+    //           });
+    //         })
+    //         .catch((err) => {
+    //           console.log("Error setting new document data:", err);
+    //         });
+    //     });
+    // });
+
+    const newID = uuidv4();
+    const newEntry = database.collection("test-results").doc(newID);
+
+    const createDoc = new Promise((resolve, reject) => {
+      newEntry
+        .set({
+          id: uuidv4(),
+          timestamp: firestore.Timestamp.now(),
+          results: [],
         })
-        .then((res) => {
-          // userID = res.data.profile.userID;
-          const accessToken = res.data.profile.jwt;
+        .then(() => {
+          console.log("Document data set successfully.");
 
-          const auth = {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          };
-
-          resolve(auth);
+          resolve();
         })
         .catch((err) => {
-          // reject(err);
+          console.log("Error setting new document data:", err);
         });
     });
+    createDoc
+      .then(() => {
+        return axios
+          .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+            token: signintoken,
+            providerNo: functions.config().kennedy.providerno,
+          })
+          .then((res) => {
+            if (res.data.profile.jwt) {
+              console.log("Token approved.");
 
-    newLogin.then((auth) => {
-      return axios
-        .post(
-          "http://kennedy-dev1.gojitech.systems/api/v1/oscar/login",
-          {
-            userName: functions.config().kennedy.name,
-            password: functions.config().kennedy.password,
-            pin: functions.config().kennedy.pin,
-          },
-          auth // auth token
-        )
-        .then((res) => {
-          console.log("logged into oscar:", res);
-          newEntry
-            .set({
-              id: uuidv4(),
-              timestamp: firestore.Timestamp.now(),
-              results: [],
-            })
-            .then(() => {
-              console.log("Document data set succussfully.");
-              const batch = database.batch();
+              const accessToken = res.data.profile.jwt;
+              const auth = {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              };
+              return auth;
+            }
+          })
+          .catch((err) => {
+            console.log(err);
+            return;
+          });
+      })
+      .then((auth) => {
+        return axios
+          .post(
+            "https://kennedy-dev1.gojitech.systems/api/v1/oscar/login",
+            {
+              userName: functions.config().kennedy.name,
+              password: functions.config().kennedy.password,
+              pin: functions.config().kennedy.pin,
+            },
+            auth // auth token
+          )
+          .then((res) => {
+            console.log("logged into oscar:", res);
+            return auth;
+          })
+          .catch((err) => {
+            console.log(err);
+            return;
+          });
+      })
+      .then((auth) => {
+        const batch = database.batch();
 
-              apis.forEach((api) => {
-                // console.log("object key:", Object.keys(api));
-                if (Object.keys(api)[0] === "get") {
-                  // console.log(Object.values(api)[0]);
+        apis.forEach((api) => {
+          if (Object.keys(api)[0] === "get") {
+            let result = {};
 
-                  let result = {};
-
-                  promises.push(
-                    axios
-                      .get(Object.values(api)[0], auth)
-                      .then((res) => {
-                        result = createResult(res);
-                      })
-                      .catch((err) => {
-                        console.log(err);
-                        result = createResult(err.response);
-                      })
-                      .then(() => {
-                        count++;
-                        console.log("axios finished.");
-                        batch.update(
-                          database.collection("test-results").doc(newID),
-                          {
-                            results: firestore.FieldValue.arrayUnion(result),
-                          }
-                        );
-                      })
-                  );
-                }
-              });
-
-              Promise.allSettled(promises).then((resultstest) => {
-                console.log(resultstest);
-                console.log(count);
-                batch
-                  .commit()
-                  .then(() => {
-                    console.log("batch committed.");
-                  })
-                  .catch((err) => {
-                    console.log(err);
+            promises.push(
+              axios
+                .get(currentApi + Object.values(api)[0], auth)
+                .then((res) => {
+                  result = createResult(res);
+                })
+                .catch((err) => {
+                  console.log(err);
+                  result = createResult(err.response);
+                })
+                .then(() => {
+                  count++;
+                  console.log("axios finished.");
+                  batch.update(database.collection("test-results").doc(newID), {
+                    results: firestore.FieldValue.arrayUnion(result),
                   });
-              });
+                })
+            );
+          }
+        });
+
+        Promise.allSettled(promises).then((resultstest) => {
+          console.log(resultstest);
+          console.log(count);
+          batch
+            .commit()
+            .then(() => {
+              console.log("batch committed.");
             })
             .catch((err) => {
-              console.log("Error setting new document data:", err);
+              console.log(err);
             });
         });
-    });
+      });
 
     return null;
   });
