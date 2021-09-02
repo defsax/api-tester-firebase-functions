@@ -128,7 +128,7 @@ const createResult = function (response, api) {
 };
 
 exports.scheduledFunction = functions.pubsub
-  .schedule("0 * * * *")
+  .schedule("0 0 0/12 ? * * *")
   .onRun((context) => {
     console.log("This should run every 12 hours!");
     const promises = [];
