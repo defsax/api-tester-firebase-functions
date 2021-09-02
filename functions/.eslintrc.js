@@ -4,7 +4,7 @@ module.exports = {
     es6: true,
     node: true,
   },
-  extends: ["eslint:recommended", "google"],
+  extends: "eslint:recommended",
   rules: {
     "space-before-function-paren": ["error", "always"],
     "object-curly-spacing": "off",

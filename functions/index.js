@@ -129,7 +129,7 @@ const createResult = function (response, api) {
 
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0 0/12 ? * * *")
-  .onRun((context) => {
+  .onRun(() => {
     console.log("This should run every 12 hours!");
     const promises = [];
     let count = 0;
@@ -159,7 +159,7 @@ exports.scheduledFunction = functions.pubsub
           resolve();
         })
         .catch((err) => {
-          console.log("Error setting new document data:", err);
+          reject(err);
         });
     });
     createDoc
@@ -249,6 +249,9 @@ exports.scheduledFunction = functions.pubsub
               console.log(err);
             });
         });
+      })
+      .catch((err) => {
+        console.log("Error creating document:", err);
       });
 
     return null;
