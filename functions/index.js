@@ -127,11 +127,29 @@ const createResult = function (response, api) {
   };
 };
 
+const postSlack = function (passes, fails) {
+  const msg = `API (${currentApi.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
+
+  axios({
+    method: "post",
+    url: functions.config().slack.devopsurl,
+    data: { text: msg },
+  })
+    .then((res) => {
+      console.log("Success posting to slack", res);
+    })
+    .catch((err) => {
+      console.log("Error posting to slack: ", err);
+    });
+};
+
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
   .onRun(() => {
     const promises = [];
     let count = 0;
+    let successes = 0;
+    let failures = 0;
 
     const jwt = require("jsonwebtoken");
     const signintoken = jwt.sign(
@@ -151,6 +169,8 @@ exports.scheduledFunction = functions.pubsub
           id: uuidv4(),
           timestamp: firestore.Timestamp.now(),
           results: [],
+          passes: 0,
+          fails: 0,
         })
         .then(() => {
           console.log("Document data set successfully.");
@@ -221,9 +241,11 @@ exports.scheduledFunction = functions.pubsub
               headers: auth["headers"],
             })
               .then((res) => {
+                successes++;
                 result = createResult(res, api);
               })
               .catch((err) => {
+                failures++;
                 console.log(err);
                 result = createResult(err.response, api);
               })
@@ -232,14 +254,20 @@ exports.scheduledFunction = functions.pubsub
                 console.log("axios finished.");
                 batch.update(database.collection("test-results").doc(newID), {
                   results: firestore.FieldValue.arrayUnion(result),
+                  passes: successes,
+                  fails: failures,
                 });
               })
           );
         });
 
-        Promise.allSettled(promises).then((resultstest) => {
-          console.log(resultstest);
-          console.log(count);
+        Promise.allSettled(promises).then(() => {
+          console.log("Total tests: ", count);
+          console.log("Total successes: ", successes);
+          console.log("Total failures: ", failures);
+
+          postSlack(successes, failures);
+
           batch
             .commit()
             .then(() => {
