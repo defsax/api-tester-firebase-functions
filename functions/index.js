@@ -1,5 +1,7 @@
 const functions = require("firebase-functions");
 const axios = require("axios");
+const jwt = require("jsonwebtoken");
+const cors = require("cors")({ origin: true });
 const { v4: uuidv4 } = require("uuid");
 
 // The Firebase Admin SDK to access Firestore.
@@ -145,13 +147,13 @@ const postSlack = function (passes, fails) {
 
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
+  .timeZone("America/New_York")
   .onRun(() => {
     const promises = [];
     let count = 0;
     let successes = 0;
     let failures = 0;
 
-    const jwt = require("jsonwebtoken");
     const signintoken = jwt.sign(
       {
         email: functions.config().kennedy.email,
@@ -163,6 +165,7 @@ exports.scheduledFunction = functions.pubsub
     const newID = uuidv4();
     const newEntry = database.collection("test-results").doc(newID);
 
+    // Setting a new entry is asynchronous, so create a promise for resolution
     const createDoc = new Promise((resolve, reject) => {
       newEntry
         .set({
@@ -174,7 +177,6 @@ exports.scheduledFunction = functions.pubsub
         })
         .then(() => {
           console.log("Document data set successfully.");
-
           resolve();
         })
         .catch((err) => {
@@ -182,8 +184,10 @@ exports.scheduledFunction = functions.pubsub
           reject(err);
         });
     });
+    // Start a promise chain
     createDoc
       .then(() => {
+        // Get access token from kennedy dev server
         return axios
           .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
             token: signintoken,
@@ -208,6 +212,7 @@ exports.scheduledFunction = functions.pubsub
           });
       })
       .then((auth) => {
+        // Sign in to oscar server
         return axios
           .post(
             "https://kennedy-dev1.gojitech.systems/api/v1/oscar/login",
@@ -228,8 +233,10 @@ exports.scheduledFunction = functions.pubsub
           });
       })
       .then((auth) => {
+        // Create batch to update results and then write all results to the database at once
         const batch = database.batch();
 
+        // Loop through api list and queue up a list of promises to be resolved all at once
         apis.forEach((api) => {
           let result = {};
 
@@ -252,22 +259,30 @@ exports.scheduledFunction = functions.pubsub
               .then(() => {
                 count++;
                 console.log("axios finished.");
+
+                // Add each result as an update to batch at our newEntry
                 batch.update(database.collection("test-results").doc(newID), {
                   results: firestore.FieldValue.arrayUnion(result),
-                  passes: successes,
-                  fails: failures,
                 });
               })
           );
         });
 
+        // Promise.allSettled so that all promises are resolved, even if some fail
         Promise.allSettled(promises).then(() => {
           console.log("Total tests: ", count);
           console.log("Total successes: ", successes);
           console.log("Total failures: ", failures);
+          // update passes and fails
+          batch.update(database.collection("test-results").doc(newID), {
+            passes: successes,
+            fails: failures,
+          });
 
+          // Send successes and fails to slack devops channel
           postSlack(successes, failures);
 
+          // Commit all batch updates at once
           batch
             .commit()
             .then(() => {
@@ -284,3 +299,56 @@ exports.scheduledFunction = functions.pubsub
 
     return null;
   });
+
+exports.login = functions.https.onRequest((request, response) => {
+  cors(request, response, () => {
+    functions.logger.info("Request:", request.body, {
+      structuredData: true,
+    });
+
+    const signintoken = jwt.sign(
+      {
+        email: request.email,
+        name: request.name,
+      },
+      "secretsignin"
+    );
+
+    axios
+      .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+        token: signintoken,
+        providerNo: "8",
+      })
+      .then((res) => {
+        response.send(res);
+        functions.logger.info("response:", res.data, {
+          structuredData: true,
+        });
+      })
+      .catch(() => {
+        // response.send(err.response.data);
+        functions.logger.info("error:", {
+          structuredData: true,
+        });
+      });
+
+    // response.send("Firebase");
+  });
+});
+
+exports.decodeToken = functions.https.onRequest((request, response) => {
+  cors(request, response, () => {
+    const decoded = jwt.decode(request.body.token);
+    console.log(decoded);
+    // const concat =
+    //   "https://oauth2.googleapis.com/tokeninfo?id_token=" + request.body.token;
+    // axios
+    //   .post(concat)
+    //   .then((res) => {
+    //     console.log(res);
+    //   })
+    //   .catch((err) => console.log(err));
+
+    response.send({ "token:": request.body.token, " decoded:": decoded });
+  });
+});
