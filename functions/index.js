@@ -1,12 +1,12 @@
 const functions = require("firebase-functions");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
-const cors = require("cors")({ origin: true });
 const { v4: uuidv4 } = require("uuid");
 
 // The Firebase Admin SDK to access Firestore.
 const admin = require("firebase-admin");
 const { firestore } = require("firebase-admin");
+
 admin.initializeApp();
 const database = admin.firestore();
 
@@ -149,7 +149,7 @@ exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
   .timeZone("America/New_York")
   .onRun(() => {
-    const promises = [];
+    // const promises = [];
     let count = 0;
     let successes = 0;
     let failures = 0;
@@ -236,37 +236,52 @@ exports.scheduledFunction = functions.pubsub
         // Create batch to update results and then write all results to the database at once
         const batch = database.batch();
 
+        const delay = (milliseconds) =>
+          new Promise((resolve) => setTimeout(resolve, milliseconds));
+
         // Loop through api list and queue up a list of promises to be resolved all at once
-        apis.forEach((api) => {
+        const promises = apis.map((api, i) => {
           let result = {};
-
-          promises.push(
-            axios({
-              method: Object.keys(api)[0],
-              url: currentApi.endpointURL + Object.values(api)[0],
-              data: Object.values(api)[1],
-              headers: auth["headers"],
-            })
-              .then((res) => {
-                successes++;
-                result = createResult(res, api);
+          return delay(i * 1000).then(() => {
+            return new Promise((resolve) => {
+              axios({
+                method: Object.keys(api)[0],
+                url: currentApi.endpointURL + Object.values(api)[0],
+                data: Object.values(api)[1],
+                headers: auth["headers"],
               })
-              .catch((err) => {
-                failures++;
-                console.log(err);
-                result = createResult(err.response, api);
-              })
-              .then(() => {
-                count++;
-                console.log("axios finished.");
+                .then((res) => {
+                  successes++;
+                  result = createResult(res, api);
+                  return new Promise((resolve) =>
+                    setTimeout(resolve, i * 1000)
+                  );
+                })
+                .catch((err) => {
+                  failures++;
+                  console.log(err);
+                  result = createResult(err.response, api);
+                  return new Promise((resolve) =>
+                    setTimeout(resolve, i * 1000)
+                  );
+                })
+                .then(() => {
+                  count++;
+                  console.log("axios finished.");
 
-                // Add each result as an update to batch at our newEntry
-                batch.update(database.collection("test-results").doc(newID), {
-                  results: firestore.FieldValue.arrayUnion(result),
+                  // Add each result as an update to batch at our newEntry
+                  batch.update(database.collection("test-results").doc(newID), {
+                    results: firestore.FieldValue.arrayUnion(result),
+                  });
+                  resolve();
                 });
-              })
-          );
+            });
+          });
         });
+
+        // apis.forEach((api) => {
+        //   promises.push();
+        // });
 
         // Promise.allSettled so that all promises are resolved, even if some fail
         Promise.allSettled(promises).then(() => {
@@ -300,55 +315,62 @@ exports.scheduledFunction = functions.pubsub
     return null;
   });
 
-exports.login = functions.https.onRequest((request, response) => {
-  cors(request, response, () => {
-    functions.logger.info("Request:", request.body, {
-      structuredData: true,
-    });
+// exports.login = functions.https.onRequest((request, response) => {
+//   cors(request, response, () => {
+//     functions.logger.info("Request:", request.body, {
+//       structuredData: true,
+//     });
 
-    const signintoken = jwt.sign(
-      {
-        email: request.email,
-        name: request.name,
-      },
-      "secretsignin"
-    );
+//     const signintoken = jwt.sign(
+//       {
+//         email: request.email,
+//         name: request.name,
+//       },
+//       "secretsignin"
+//     );
 
-    axios
-      .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
-        token: signintoken,
-        providerNo: "8",
-      })
-      .then((res) => {
-        response.send(res);
-        functions.logger.info("response:", res.data, {
-          structuredData: true,
-        });
-      })
-      .catch(() => {
-        // response.send(err.response.data);
-        functions.logger.info("error:", {
-          structuredData: true,
-        });
-      });
+//     axios
+//       .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+//         token: signintoken,
+//         providerNo: "8",
+//       })
+//       .then((res) => {
+//         response.send(res);
+//         functions.logger.info("response:", res.data, {
+//           structuredData: true,
+//         });
+//       })
+//       .catch(() => {
+//         // response.send(err.response.data);
+//         functions.logger.info("error:", {
+//           structuredData: true,
+//         });
+//       });
 
-    // response.send("Firebase");
-  });
-});
+//     // response.send("Firebase");
+//   });
+// });
 
-exports.decodeToken = functions.https.onRequest((request, response) => {
-  cors(request, response, () => {
-    const decoded = jwt.decode(request.body.token);
-    console.log(decoded);
-    // const concat =
-    //   "https://oauth2.googleapis.com/tokeninfo?id_token=" + request.body.token;
-    // axios
-    //   .post(concat)
-    //   .then((res) => {
-    //     console.log(res);
-    //   })
-    //   .catch((err) => console.log(err));
+// exports.decodeToken = functions.https.onRequest((request, response) => {
+//   cors(request, response, () => {
+//     const decoded = jwt.decode(request.body.token);
+//     console.log(decoded);
+//     response.send({ token: request.body.token, decoded: decoded });
+//   });
+// });
 
-    response.send({ "token:": request.body.token, " decoded:": decoded });
-  });
-});
+// exports.cors = functions.https.onRequest((request, response) => {
+//   cors(request, response, () => {
+//     console.log(request.body);
+//     axios
+//       .get(request.body.url)
+//       .then((res) => {
+//         // console.log(res);
+//         response.send({ res });
+//       })
+//       .catch((err) => {
+//         // console.log(err);
+//         response.send({ err });
+//       });
+//   });
+// });

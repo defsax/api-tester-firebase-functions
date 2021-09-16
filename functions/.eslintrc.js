@@ -6,7 +6,7 @@ module.exports = {
   },
   extends: "eslint:recommended",
   rules: {
-    "space-before-function-paren": ["error", "always"],
+    // "space-before-function-paren": ["error", "always"],
     "object-curly-spacing": "off",
     "quote-props": ["error", "as-needed"],
     quotes: ["error", "double"],
