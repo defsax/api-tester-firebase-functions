@@ -10,20 +10,6 @@ const { firestore } = require("firebase-admin");
 admin.initializeApp();
 const database = admin.firestore();
 
-const apiVersion = [
-  {
-    apitype: "dev",
-    endpointURL: "https://kennedy-dev1.gojitech.systems",
-  },
-  {
-    apitype: "staging",
-    endpointURL: "https://kennedy-dev2.gojitech.systems",
-  },
-];
-
-// switch here to change from dev to staging
-const currentApi = apiVersion[0];
-
 const apis = [
   // OTHER
   { get: "/api/v1/status" },
@@ -108,7 +94,7 @@ const apis = [
   },
 ];
 
-const createResult = function (response, api) {
+const createResult = function (response, api, server) {
   return {
     // id
     id: uuidv4(),
@@ -117,7 +103,7 @@ const createResult = function (response, api) {
     // endpoint URL
     endpointURL: response.config.url,
     // api type (dev/staging/production) -> to begin with, everything is dev
-    apiType: currentApi.apitype,
+    apiType: server.apitype,
     // apiURL
     apiURL: Object.values(api)[0],
     // method
@@ -129,8 +115,8 @@ const createResult = function (response, api) {
   };
 };
 
-const postSlack = function (passes, fails) {
-  const msg = `API (${currentApi.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
+const postSlack = function (passes, fails, server) {
+  const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
 
   axios({
     method: "post",
@@ -149,10 +135,18 @@ exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
   .timeZone("America/New_York")
   .onRun(() => {
-    // const promises = [];
-    let count = 0;
-    let successes = 0;
-    let failures = 0;
+    const servers = [
+      {
+        apitype: "dev",
+        endpointURL: "https://kennedy-dev1.gojitech.systems",
+        id: uuidv4(),
+      },
+      {
+        apitype: "staging",
+        endpointURL: "https://kennedy-staging1.gojitech.systems",
+        id: uuidv4(),
+      },
+    ];
 
     const signintoken = jwt.sign(
       {
@@ -162,18 +156,29 @@ exports.scheduledFunction = functions.pubsub
       "secretsignin"
     );
 
-    const newID = uuidv4();
-    const newEntry = database.collection("test-results").doc(newID);
+    const docID = uuidv4();
+
+    const newDoc = database.collection("test-results").doc(docID);
+    const devCollection = database
+      .collection("test-results")
+      .doc(docID)
+      .collection("dev")
+      .doc(servers[0].id);
+    const stagingCollection = database
+      .collection("test-results")
+      .doc(docID)
+      .collection("staging")
+      .doc(servers[1].id);
 
     // Setting a new entry is asynchronous, so create a promise for resolution
     const createDoc = new Promise((resolve, reject) => {
-      newEntry
+      newDoc
         .set({
           id: uuidv4(),
           timestamp: firestore.Timestamp.now(),
-          results: [],
-          passes: 0,
-          fails: 0,
+          // results: [],
+          // passes: 0,
+          // fails: 0,
         })
         .then(() => {
           console.log("Document data set successfully.");
@@ -186,6 +191,36 @@ exports.scheduledFunction = functions.pubsub
     });
     // Start a promise chain
     createDoc
+      .then(() => {
+        devCollection
+          .set({
+            results: [],
+            passes: 0,
+            fails: 0,
+          })
+          .then(() => {
+            console.log("Dev collection set succesfully.");
+            return;
+          })
+          .catch((err) => {
+            console.log("Error setting new collection data.", err);
+          });
+      })
+      .then(() => {
+        stagingCollection
+          .set({
+            results: [],
+            passes: 0,
+            fails: 0,
+          })
+          .then(() => {
+            console.log("Staging collection set succesfully.");
+            return;
+          })
+          .catch((err) => {
+            console.log("Error setting new collection data.", err);
+          });
+      })
       .then(() => {
         // Get access token from kennedy dev server
         return axios
@@ -233,79 +268,88 @@ exports.scheduledFunction = functions.pubsub
           });
       })
       .then((auth) => {
-        // Create batch to update results and then write all results to the database at once
-        const batch = database.batch();
+        servers.forEach((server) => {
+          let count = 0;
+          let successes = 0;
+          let failures = 0;
 
-        const delay = (milliseconds) =>
-          new Promise((resolve) => setTimeout(resolve, milliseconds));
+          const docRef = database
+            .collection("test-results")
+            .doc(docID)
+            .collection(server.apitype)
+            .doc(server.id);
 
-        // Loop through api list and queue up a list of promises to be resolved all at once
-        const promises = apis.map((api, i) => {
-          let result = {};
-          return delay(i * 1000).then(() => {
-            return new Promise((resolve) => {
-              axios({
-                method: Object.keys(api)[0],
-                url: currentApi.endpointURL + Object.values(api)[0],
-                data: Object.values(api)[1],
-                headers: auth["headers"],
-              })
-                .then((res) => {
-                  successes++;
-                  result = createResult(res, api);
-                  return new Promise((resolve) =>
-                    setTimeout(resolve, i * 1000)
-                  );
+          // Create batch to update results and then write all results to the database at once
+          const batch = database.batch();
+
+          const delay = (milliseconds) =>
+            new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+          // Loop through api list and queue up a list of promises to be resolved all at once
+          const promises = apis.map((api, i) => {
+            let result = {};
+            return delay(i * 1000).then(() => {
+              return new Promise((resolve) => {
+                axios({
+                  method: Object.keys(api)[0],
+                  url: server.endpointURL + Object.values(api)[0],
+                  data: Object.values(api)[1],
+                  headers: auth["headers"],
                 })
-                .catch((err) => {
-                  failures++;
-                  console.log(err);
-                  result = createResult(err.response, api);
-                  return new Promise((resolve) =>
-                    setTimeout(resolve, i * 1000)
-                  );
-                })
-                .then(() => {
-                  count++;
-                  console.log("axios finished.");
+                  .then((res) => {
+                    successes++;
+                    result = createResult(res, api, server);
+                    return new Promise((resolve) =>
+                      setTimeout(resolve, i * 1000)
+                    );
+                  })
+                  .catch((err) => {
+                    failures++;
+                    console.log(err);
+                    result = createResult(err.response, api, server);
+                    return new Promise((resolve) =>
+                      setTimeout(resolve, i * 1000)
+                    );
+                  })
+                  .then(() => {
+                    count++;
+                    console.log("axios finished.");
+                    // Add each result as an update to batch at our newEntry
 
-                  // Add each result as an update to batch at our newEntry
-                  batch.update(database.collection("test-results").doc(newID), {
-                    results: firestore.FieldValue.arrayUnion(result),
+                    batch.update(docRef, {
+                      results: firestore.FieldValue.arrayUnion(result),
+                    });
+
+                    resolve();
                   });
-                  resolve();
-                });
+              });
             });
           });
-        });
 
-        // apis.forEach((api) => {
-        //   promises.push();
-        // });
-
-        // Promise.allSettled so that all promises are resolved, even if some fail
-        Promise.allSettled(promises).then(() => {
-          console.log("Total tests: ", count);
-          console.log("Total successes: ", successes);
-          console.log("Total failures: ", failures);
-          // update passes and fails
-          batch.update(database.collection("test-results").doc(newID), {
-            passes: successes,
-            fails: failures,
-          });
-
-          // Send successes and fails to slack devops channel
-          postSlack(successes, failures);
-
-          // Commit all batch updates at once
-          batch
-            .commit()
-            .then(() => {
-              console.log("batch committed.");
-            })
-            .catch((err) => {
-              console.log(err);
+          // Promise.allSettled so that all promises are resolved, even if some fail
+          Promise.allSettled(promises).then(() => {
+            console.log("Total tests: ", count);
+            console.log("Total successes: ", successes);
+            console.log("Total failures: ", failures);
+            // update passes and fails
+            batch.update(docRef, {
+              passes: successes,
+              fails: failures,
             });
+
+            // Send successes and fails to slack devops channel
+            postSlack(successes, failures, server);
+
+            // Commit all batch updates at once
+            batch
+              .commit()
+              .then(() => {
+                console.log("batch committed.");
+              })
+              .catch((err) => {
+                console.log(err);
+              });
+          });
         });
       })
       .catch((err) => {
