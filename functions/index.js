@@ -116,21 +116,21 @@ const createResult = function (response, api, server) {
   };
 };
 
-// const postSlack = function (passes, fails, server) {
-//   const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
+const postSlack = function (passes, fails, server) {
+  const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
 
-//   axios({
-//     method: "post",
-//     url: functions.config().slack.devopsurl,
-//     data: { text: msg },
-//   })
-//     .then((res) => {
-//       console.log("Success posting to slack", res);
-//     })
-//     .catch((err) => {
-//       console.log("Error posting to slack: ", err);
-//     });
-// };
+  axios({
+    method: "post",
+    url: functions.config().slack.devopsurl,
+    data: { text: msg },
+  })
+    .then((res) => {
+      console.log("Success posting to slack", res);
+    })
+    .catch((err) => {
+      console.log("Error posting to slack: ", err);
+    });
+};
 
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
@@ -208,34 +208,6 @@ exports.scheduledFunction = functions.pubsub
             return;
           });
       })
-      // .then(() => {
-      //   servers[0].docRef
-      //     .set({
-      //       results: [],
-      //       passes: 0,
-      //       fails: 0,
-      //     })
-      //     .then(() => {
-      //       console.log("Dev collection set succesfully.");
-      //     })
-      //     .catch((err) => {
-      //       console.log("Error setting new collection data.", err);
-      //     });
-      // })
-      // .then(() => {
-      //   servers[1].docRef
-      //     .set({
-      //       results: [],
-      //       passes: 0,
-      //       fails: 0,
-      //     })
-      //     .then(() => {
-      //       console.log("Staging collection set succesfully.");
-      //     })
-      //     .catch((err) => {
-      //       console.log("Error setting new collection data.", err);
-      //     });
-      // })
       .then(() => {
         // Get access token from dev server
         const url =
@@ -292,27 +264,6 @@ exports.scheduledFunction = functions.pubsub
             throw new Error(err);
           });
       })
-      // .then((auth) => {
-      // Sign in to oscar server
-      // return axios
-      //   .post(
-      //     "https://kennedy-staging1.gojitech.systems/api/v1/oscar/login",
-      //     {
-      //       userName: functions.config().kennedy.name,
-      //       password: functions.config().kennedy.password,
-      //       pin: functions.config().kennedy.pin,
-      //     },
-      //     auth // auth token
-      //   )
-      //   .then((res) => {
-      //     console.log("logged into oscar:", res);
-      //     return auth;
-      //   })
-      //   .catch((err) => {
-      //     console.log("Error logging into oscar:", err);
-      //     return;
-      //   });
-      // })
       .then(() => {
         servers.forEach((server) => {
           let count = 0;
@@ -382,7 +333,7 @@ exports.scheduledFunction = functions.pubsub
             });
 
             // Send successes and fails to slack devops channel
-            // postSlack(successes, failures, server);
+            postSlack(successes, failures, server);
 
             // Commit all batch updates at once
             batch
