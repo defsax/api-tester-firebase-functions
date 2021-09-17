@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const axios = require("axios");
+// const cors = require("cors")({ origin: true });
 const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
 
@@ -115,38 +116,30 @@ const createResult = function (response, api, server) {
   };
 };
 
-const postSlack = function (passes, fails, server) {
-  const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
+// const postSlack = function (passes, fails, server) {
+//   const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
 
-  axios({
-    method: "post",
-    url: functions.config().slack.devopsurl,
-    data: { text: msg },
-  })
-    .then((res) => {
-      console.log("Success posting to slack", res);
-    })
-    .catch((err) => {
-      console.log("Error posting to slack: ", err);
-    });
-};
+//   axios({
+//     method: "post",
+//     url: functions.config().slack.devopsurl,
+//     data: { text: msg },
+//   })
+//     .then((res) => {
+//       console.log("Success posting to slack", res);
+//     })
+//     .catch((err) => {
+//       console.log("Error posting to slack: ", err);
+//     });
+// };
 
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
   .timeZone("America/New_York")
   .onRun(() => {
-    const servers = [
-      {
-        apitype: "dev",
-        endpointURL: "https://kennedy-dev1.gojitech.systems",
-        id: uuidv4(),
-      },
-      {
-        apitype: "staging",
-        endpointURL: "https://kennedy-staging1.gojitech.systems",
-        id: uuidv4(),
-      },
-    ];
+    const newDevDoc = database.collection("dev-test-results").doc(uuidv4());
+    const newStagingDoc = database
+      .collection("staging-test-results")
+      .doc(uuidv4());
 
     const signintoken = jwt.sign(
       {
@@ -156,128 +149,175 @@ exports.scheduledFunction = functions.pubsub
       "secretsignin"
     );
 
-    const docID = uuidv4();
-
-    const newDoc = database.collection("test-results").doc(docID);
-    const devCollection = database
-      .collection("test-results")
-      .doc(docID)
-      .collection("dev")
-      .doc(servers[0].id);
-    const stagingCollection = database
-      .collection("test-results")
-      .doc(docID)
-      .collection("staging")
-      .doc(servers[1].id);
+    const servers = [
+      {
+        apitype: "dev",
+        endpointURL: "https://kennedy-dev1.gojitech.systems",
+        suffix:
+          "?siteURL=" +
+          encodeURIComponent("https://goji-oscar1.gojitech.systems") +
+          "&appVersion=dev",
+        docRef: newDevDoc,
+        auth: {},
+      },
+      {
+        apitype: "staging",
+        endpointURL: "https://kennedy-staging1.gojitech.systems",
+        suffix: "",
+        docRef: newStagingDoc,
+        auth: {},
+      },
+    ];
 
     // Setting a new entry is asynchronous, so create a promise for resolution
     const createDoc = new Promise((resolve, reject) => {
-      newDoc
+      newDevDoc
         .set({
           id: uuidv4(),
           timestamp: firestore.Timestamp.now(),
-          // results: [],
-          // passes: 0,
-          // fails: 0,
+          results: [],
+          passes: 0,
+          fails: 0,
         })
         .then(() => {
-          console.log("Document data set successfully.");
+          console.log("Dev document data set successfully.");
           resolve();
         })
         .catch((err) => {
-          console.log("Error setting new document data.");
+          console.log("Error setting new document data.", err);
           reject(err);
         });
     });
     // Start a promise chain
     createDoc
       .then(() => {
-        devCollection
+        newStagingDoc
           .set({
+            id: uuidv4(),
+            timestamp: firestore.Timestamp.now(),
             results: [],
             passes: 0,
             fails: 0,
           })
           .then(() => {
-            console.log("Dev collection set succesfully.");
+            console.log("Staging document data set successfully.");
             return;
           })
           .catch((err) => {
-            console.log("Error setting new collection data.", err);
-          });
-      })
-      .then(() => {
-        stagingCollection
-          .set({
-            results: [],
-            passes: 0,
-            fails: 0,
-          })
-          .then(() => {
-            console.log("Staging collection set succesfully.");
+            console.log("Error setting new document data.", err);
             return;
-          })
-          .catch((err) => {
-            console.log("Error setting new collection data.", err);
           });
       })
+      // .then(() => {
+      //   servers[0].docRef
+      //     .set({
+      //       results: [],
+      //       passes: 0,
+      //       fails: 0,
+      //     })
+      //     .then(() => {
+      //       console.log("Dev collection set succesfully.");
+      //     })
+      //     .catch((err) => {
+      //       console.log("Error setting new collection data.", err);
+      //     });
+      // })
+      // .then(() => {
+      //   servers[1].docRef
+      //     .set({
+      //       results: [],
+      //       passes: 0,
+      //       fails: 0,
+      //     })
+      //     .then(() => {
+      //       console.log("Staging collection set succesfully.");
+      //     })
+      //     .catch((err) => {
+      //       console.log("Error setting new collection data.", err);
+      //     });
+      // })
       .then(() => {
-        // Get access token from kennedy dev server
+        // Get access token from dev server
+        const url =
+          "https://kennedy-dev1.gojitech.systems/api/v1/login" +
+          servers[0].suffix;
+        console.log(typeof url, url);
+
         return axios
-          .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+          .post(url, {
             token: signintoken,
-            providerNo: functions.config().kennedy.providerno,
+            providerNo: functions.config().kennedy.providerno.dev,
           })
           .then((res) => {
             if (res.data.profile.jwt) {
               console.log("Token approved.");
 
               const accessToken = res.data.profile.jwt;
-              const auth = {
+              servers[0].auth = {
                 headers: {
                   Authorization: `Bearer ${accessToken}`,
                 },
               };
-              return auth;
             }
           })
           .catch((err) => {
             console.log("Error getting jwt approved:", err);
-            return;
+            throw new Error(err);
           });
       })
-      .then((auth) => {
-        // Sign in to oscar server
+      .then(() => {
+        // Get access token from kennedy staging server
+
+        const url = "https://kennedy-staging1.gojitech.systems/api/v1/login";
+
         return axios
-          .post(
-            "https://kennedy-dev1.gojitech.systems/api/v1/oscar/login",
-            {
-              userName: functions.config().kennedy.name,
-              password: functions.config().kennedy.password,
-              pin: functions.config().kennedy.pin,
-            },
-            auth // auth token
-          )
+          .post(url, {
+            token: signintoken,
+            providerNo: functions.config().kennedy.providerno.staging,
+          })
           .then((res) => {
-            console.log("logged into oscar:", res);
-            return auth;
+            if (res.data.profile.jwt) {
+              console.log("Token approved.");
+
+              const accessToken = res.data.profile.jwt;
+              servers[1].auth = {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                },
+              };
+            }
           })
           .catch((err) => {
-            console.log("Error logging into oscar:", err);
-            return;
+            console.log("Error getting jwt approved:", err);
+            throw new Error(err);
           });
       })
-      .then((auth) => {
+      // .then((auth) => {
+      // Sign in to oscar server
+      // return axios
+      //   .post(
+      //     "https://kennedy-staging1.gojitech.systems/api/v1/oscar/login",
+      //     {
+      //       userName: functions.config().kennedy.name,
+      //       password: functions.config().kennedy.password,
+      //       pin: functions.config().kennedy.pin,
+      //     },
+      //     auth // auth token
+      //   )
+      //   .then((res) => {
+      //     console.log("logged into oscar:", res);
+      //     return auth;
+      //   })
+      //   .catch((err) => {
+      //     console.log("Error logging into oscar:", err);
+      //     return;
+      //   });
+      // })
+      .then(() => {
         servers.forEach((server) => {
           let count = 0;
           let successes = 0;
           let failures = 0;
-
-          const docRef = database
-            .collection("test-results")
-            .doc(docID)
-            .collection(server.apitype)
-            .doc(server.id);
 
           // Create batch to update results and then write all results to the database at once
           const batch = database.batch();
@@ -290,11 +330,15 @@ exports.scheduledFunction = functions.pubsub
             let result = {};
             return delay(i * 1000).then(() => {
               return new Promise((resolve) => {
+                console.log(
+                  server.endpointURL + Object.values(api)[0] + server.suffix
+                );
                 axios({
                   method: Object.keys(api)[0],
-                  url: server.endpointURL + Object.values(api)[0],
+                  url:
+                    server.endpointURL + Object.values(api)[0] + server.suffix,
                   data: Object.values(api)[1],
-                  headers: auth["headers"],
+                  headers: server.auth["headers"],
                 })
                   .then((res) => {
                     successes++;
@@ -316,7 +360,7 @@ exports.scheduledFunction = functions.pubsub
                     console.log("axios finished.");
                     // Add each result as an update to batch at our newEntry
 
-                    batch.update(docRef, {
+                    batch.update(server.docRef, {
                       results: firestore.FieldValue.arrayUnion(result),
                     });
 
@@ -332,13 +376,13 @@ exports.scheduledFunction = functions.pubsub
             console.log("Total successes: ", successes);
             console.log("Total failures: ", failures);
             // update passes and fails
-            batch.update(docRef, {
+            batch.update(server.docRef, {
               passes: successes,
               fails: failures,
             });
 
             // Send successes and fails to slack devops channel
-            postSlack(successes, failures, server);
+            // postSlack(successes, failures, server);
 
             // Commit all batch updates at once
             batch
@@ -361,37 +405,57 @@ exports.scheduledFunction = functions.pubsub
 
 // exports.login = functions.https.onRequest((request, response) => {
 //   cors(request, response, () => {
-//     functions.logger.info("Request:", request.body, {
-//       structuredData: true,
-//     });
 
 //     const signintoken = jwt.sign(
 //       {
-//         email: request.email,
-//         name: request.name,
+//         email: request.body.email,
+//         name: request.body.name,
 //       },
 //       "secretsignin"
 //     );
 
-//     axios
-//       .post("https://kennedy-dev1.gojitech.systems/api/v1/login", {
+//     const urlSuffix = "?siteURL=";
+//     const versionSuffix = "&appVersion=" + request.body.appVersion;
+//     const url =
+//       // "https://goji-oscar1.gojitech.systems/" +
+//       "https://kennedy-staging1.gojitech.systems/api/v1/login" +
+//       urlSuffix +
+//       encodeURIComponent(request.body.siteURL) +
+//       versionSuffix;
+//     console.log(typeof url, url);
+
+//     axios({
+//       method: "post",
+//       url: url,
+//       // url: "https://kennedy-dev1.gojitech.systems/api/v1/login",
+//       data: {
 //         token: signintoken,
-//         providerNo: "8",
-//       })
+//         providerNo: "12",
+//       },
+//       // params: {
+//       //   siteURL: request.body.siteURL,
+//       //   appVersion: request.body.appVersion,
+//       // },
+//       // Headers: {
+//       //   "Content-Type": "application/json",
+//       // },
+//     })
 //       .then((res) => {
-//         response.send(res);
-//         functions.logger.info("response:", res.data, {
-//           structuredData: true,
-//         });
+//         // functions.logger.info("response:", res.data, {
+//         //   structuredData: true,
+//         // });
+//         console.log(res.data);
+//         // response.send(res);
 //       })
-//       .catch(() => {
+//       .catch((err) => {
+//         // functions.logger.info("error:", {
+//         //   structuredData: true,
+//         // });
+//         console.log(err);
 //         // response.send(err.response.data);
-//         functions.logger.info("error:", {
-//           structuredData: true,
-//         });
 //       });
 
-//     // response.send("Firebase");
+//     response.send(request.body);
 //   });
 // });
 
