@@ -135,7 +135,7 @@ const createResult = function (response, api) {
 //     });
 // };
 
-const queryAPIS = async function (server) {
+const queryAPIS = async function (server, auth) {
   console.log(server.endpointURL + apis[0].get + server.suffix);
   let count = 0;
   let successes = 0;
@@ -153,7 +153,7 @@ const queryAPIS = async function (server) {
             method: Object.keys(api)[0],
             url: server.endpointURL + Object.values(api)[0] + server.suffix,
             data: Object.values(api)[1],
-            headers: server.auth["headers"],
+            headers: auth,
           });
           console.log("axios returned:", response);
           result = createResult(response, api);
@@ -287,14 +287,14 @@ exports.scheduledFunction = functions.pubsub
         functions.config().kennedy.providerno.dev,
         functions.config().google.token
       );
-      console.log("Successful dev token approval.");
+      if (servers[0].auth) console.log("Successful dev token approval.");
 
       servers[1].auth = await getAuthToken(
         servers[1].endpointURL + "/api/v1/login",
         functions.config().kennedy.providerno.staging,
         signintoken
       );
-      console.log("Successful staging token approval.");
+      if (servers[1].auth) console.log("Successful staging token approval.");
     } catch (err) {
       console.log("Error getting jwt approved.", err);
     }
@@ -302,7 +302,7 @@ exports.scheduledFunction = functions.pubsub
     // Run tests...
     try {
       servers.forEach((server) => {
-        queryAPIS(server);
+        queryAPIS(server, servers[0].auth["headers"]);
       });
     } catch (err) {
       console.log("Error querying apis:", err);
