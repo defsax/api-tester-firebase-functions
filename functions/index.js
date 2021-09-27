@@ -1,7 +1,7 @@
 const functions = require("firebase-functions");
 const axios = require("axios");
 const cors = require("cors")({ origin: true });
-// const jwt = require("jsonwebtoken");
+const jwt = require("jsonwebtoken");
 const { v4: uuidv4 } = require("uuid");
 const TaskQueue = require("cwait").TaskQueue;
 
@@ -135,7 +135,7 @@ const createResult = function (response, api) {
 //     });
 // };
 
-const getAPIS = async function (server) {
+const queryAPIS = async function (server) {
   console.log(server.endpointURL + apis[0].get + server.suffix);
   let count = 0;
   let successes = 0;
@@ -144,17 +144,9 @@ const getAPIS = async function (server) {
   const batch = database.batch();
 
   const queue = new TaskQueue(Promise, MAX_SIMULTANEOUS_DOWNLOADS);
-  const results = await Promise.all(
+  await Promise.all(
     apis.map(
       queue.wrap(async (api) => {
-        // console.log(
-        //   "before axios:",
-        //   "api:",
-        //   api,
-        //   "server:",
-        //   server,
-        //   "server.auth['headers']:" + server.auth["headers"]
-        // );
         let result = {};
         try {
           const response = await axios({
@@ -173,7 +165,6 @@ const getAPIS = async function (server) {
         }
 
         console.log("after axios");
-
         count++;
 
         // Add each result as an update to batch at our newEntry
@@ -184,12 +175,11 @@ const getAPIS = async function (server) {
     )
   );
 
-  // Promise.allSettled so that all promises are resolved, even if some fail
-
   console.log("Total tests: ", count);
   console.log("Total successes: ", successes);
   console.log("Total failures: ", failures);
-  // update passes and fails
+
+  // Update passes and fails
   batch.update(server.docRef, {
     passes: successes,
     fails: failures,
@@ -205,16 +195,33 @@ const getAPIS = async function (server) {
   } catch (err) {
     console.log("error committing batch", err);
   }
-  // batch
-  //   .commit()
-  //   .then(() => {
-  //     console.log("batch committed.");
-  //   })
-  //   .catch((err) => {
-  //     console.log(err);
-  //   });
+};
 
-  console.log(results);
+const getAuthToken = async function (url, providerNo, token) {
+  // Get access token from login server
+  try {
+    const response = await axios({
+      method: "post",
+      url: url,
+      data: {
+        token: token,
+        providerNo: providerNo,
+      },
+    });
+    console.log("axios returned:", response);
+    if (response.data.profile.jwt) {
+      const accessToken = response.data.profile.jwt;
+      console.log("Token approved.", accessToken);
+
+      return {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      };
+    }
+  } catch (err) {
+    console.log("Error getting jwt approved:", err);
+  }
 };
 
 exports.scheduledFunction = functions.pubsub
@@ -226,13 +233,21 @@ exports.scheduledFunction = functions.pubsub
       .collection("staging-test-results")
       .doc(uuidv4());
 
-    // const signintoken = jwt.sign(
-    //   {
-    //     email: functions.config().kennedy.email,
-    //     name: functions.config().kennedy.name,
-    //   },
-    //   "secretsignin"
-    // );
+    const dataDefaults = {
+      id: uuidv4(),
+      timestamp: firestore.Timestamp.now(),
+      results: [],
+      passes: 0,
+      fails: 0,
+    };
+
+    const signintoken = jwt.sign(
+      {
+        email: functions.config().kennedy.email,
+        name: functions.config().kennedy.name,
+      },
+      "secretsignin"
+    );
 
     const servers = [
       {
@@ -254,163 +269,46 @@ exports.scheduledFunction = functions.pubsub
       },
     ];
 
-    // Setting a new entry is asynchronous, so create a promise for resolution
-    const createDoc = new Promise((resolve, reject) => {
-      newDevDoc
-        .set({
-          id: uuidv4(),
-          timestamp: firestore.Timestamp.now(),
-          results: [],
-          passes: 0,
-          fails: 0,
-        })
-        .then(() => {
-          console.log("Dev document data set successfully.");
-          resolve();
-        })
-        .catch((err) => {
-          console.log("Error setting new document data.", err);
-          reject(err);
-        });
-    });
-    // Start a promise chain
-    createDoc
-      .then(() => {
-        newStagingDoc
-          .set({
-            id: uuidv4(),
-            timestamp: firestore.Timestamp.now(),
-            results: [],
-            passes: 0,
-            fails: 0,
-          })
-          .then(() => {
-            console.log("Staging document data set successfully.");
-            return;
-          })
-          .catch((err) => {
-            console.log("Error setting new document data.", err);
-            return;
-          });
-      })
-      .then(() => {
-        // Get access token from dev server
-        const url =
-          "https://kennedy-dev1.gojitech.systems/api/v1/login" +
-          servers[0].suffix;
-        console.log(typeof url, url);
+    // Set docs up with default data
+    try {
+      const devRes = await newDevDoc.set(dataDefaults);
+      console.log("Dev document data set successfully.", devRes);
 
-        return axios
-          .post(url, {
-            token: functions.config().google.token,
-            // token: signintoken,
-            providerNo: functions.config().kennedy.providerno.dev,
-          })
-          .then((res) => {
-            if (res.data.profile.jwt) {
-              console.log("Token approved.");
+      const stagingRes = await newStagingDoc.set(dataDefaults);
+      console.log("Staging document data set successfully.", stagingRes);
+    } catch (err) {
+      console.log("Error setting new document data.", err);
+    }
 
-              const accessToken = res.data.profile.jwt;
-              servers[0].auth = {
-                headers: {
-                  Authorization: `Bearer ${accessToken}`,
-                },
-              };
-            }
-          })
-          .catch((err) => {
-            console.log("Error getting jwt approved:", err);
-            throw new Error(err);
-          });
-      })
-      .then(() => {
-        // Create batch to update results and then write all results to the database at once
-        // const batch = database.batch();
+    // Set up tokens
+    try {
+      servers[0].auth = await getAuthToken(
+        servers[0].endpointURL + "/api/v1/login" + servers[0].suffix,
+        functions.config().kennedy.providerno.dev,
+        functions.config().google.token
+      );
+      console.log("Successful dev token approval.");
 
-        servers.forEach((server) => {
-          // let count = 0;
-          // let successes = 0;
-          // let failures = 0;
+      servers[1].auth = await getAuthToken(
+        servers[1].endpointURL + "/api/v1/login",
+        functions.config().kennedy.providerno.staging,
+        signintoken
+      );
+      console.log("Successful staging token approval.");
+    } catch (err) {
+      console.log("Error getting jwt approved.", err);
+    }
 
-          getAPIS(server);
-
-          // const delay = (milliseconds) =>
-          //   new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-          // Loop through api list and queue up a list of promises to be resolved all at once
-          // const promises = apis.map((api, i) => {
-          //   let result = {};
-          //   return delay(i * 1500).then(() => {
-          //     return new Promise((resolve) => {
-          //       console.log(
-          //         server.endpointURL + Object.values(api)[0] + server.suffix
-          //       );
-          //       axios({
-          //         method: Object.keys(api)[0],
-          //         url:
-          //           server.endpointURL + Object.values(api)[0] + server.suffix,
-          //         data: Object.values(api)[1],
-          //         headers: server[0].auth["headers"],
-          //       })
-          //         .then((res) => {
-          //           successes++;
-          //           result = createResult(res, api, server);
-          //           return new Promise((resolve) =>
-          //             setTimeout(resolve, i * 1500)
-          //           );
-          //         })
-          //         .catch((err) => {
-          //           failures++;
-          //           console.log(err);
-          //           result = createResult(err.response, api, server);
-          //           return new Promise((resolve) =>
-          //             setTimeout(resolve, i * 1500)
-          //           );
-          //         })
-          //         .then(() => {
-          //           count++;
-          //           console.log("axios finished.");
-          //           // Add each result as an update to batch at our newEntry
-
-          //           batch.update(server.docRef, {
-          //             results: firestore.FieldValue.arrayUnion(result),
-          //           });
-
-          //           resolve();
-          //         });
-          //     });
-          //   });
-          // });
-
-          // // Promise.allSettled so that all promises are resolved, even if some fail
-          // Promise.allSettled(promises).then(() => {
-          //   console.log("Total tests: ", count);
-          //   console.log("Total successes: ", successes);
-          //   console.log("Total failures: ", failures);
-          //   // update passes and fails
-          //   batch.update(server.docRef, {
-          //     passes: successes,
-          //     fails: failures,
-          //   });
-
-          //   // Send successes and fails to slack devops channel
-          //   // postSlack(successes, failures, server);
-
-          //   // Commit all batch updates at once
-          //   batch
-          //     .commit()
-          //     .then(() => {
-          //       console.log("batch committed.");
-          //     })
-          //     .catch((err) => {
-          //       console.log(err);
-          //     });
-          // });
-        });
-      })
-      .catch((err) => {
-        console.log(err);
+    // Run tests...
+    try {
+      servers.forEach((server) => {
+        queryAPIS(server);
       });
+    } catch (err) {
+      console.log("Error querying apis:", err);
+    }
+
+    console.log("Scheduled function finished running.");
 
     return null;
   });
