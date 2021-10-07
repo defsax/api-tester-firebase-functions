@@ -24,37 +24,40 @@ const apis = [
   // { get: "/api/v1/oscarrest/patients" },
   // { get: "/api/v1/oscarrest/auth" },
   {
+    get: "/api/v1/oscar/patients/1/allergies",
+  },
+  {
     post: "/api/v1/oscar/prescriptions",
     body: [
       {
-        demographicNo: 0,
+        demographicNo: 9, // DEMING / WALTER
         drugs: [
           {
-            drugId: 0,
-            providerNo: 0,
-            brandName: "string",
+            drugId: 34419,
+            brandName: "AMOXICILLIN CAPSULES BP 500MG",
+            providerNo: 217,
             takeMin: 0,
             takeMax: 0,
-            rxDate: "2021-07-08T16:05:49.404Z",
-            endDate: "2021-07-08T16:05:49.404Z",
-            frequency: "",
-            duration: 0,
-            durationUnit: "",
-            route: "",
-            method: "",
-            prn: false,
+            rxDate: "2021-10-07T00:00:00.000Z",
+            frequency: "day",
+            duration: 3,
+            durationUnit: "weeks",
+            route: "string",
+            method: "string",
+            prn: true,
             repeats: 0,
-            quantity: 0,
-            instructions: "string",
+            quantity: 42,
+            instructions: "Take 2 pills every day for 3 weeks",
             additionalInstructions: "",
-            archived: false,
+            archived: true,
             archivedReason: "",
             archivedDate: null,
             strength: 0,
-            strengthUnit: "",
+            strengthUnit: "string",
             externalProvider: "",
             longTerm: true,
             noSubstitutions: true,
+            endDate: "2021-10-28T00:00:00.000Z",
           },
         ],
       },
@@ -66,9 +69,9 @@ const apis = [
   {
     post: "/api/v1/oscar/patients",
     body: {
-      firstName: "James",
-      lastName: "Alex",
-      email: "james.alex@gmail.com",
+      firstName: "Test",
+      lastName: "Patient",
+      email: "test.patient" + uuidv4() + "@gmail.com",
       sex: "M",
       dateOfBirth: "1978-12-31T00:00:00.000Z",
       address: {
@@ -81,9 +84,7 @@ const apis = [
   },
   { get: "/api/v1/oscar/patients/all" },
   { get: "/api/v1/oscar/patients/1" },
-  {
-    get: "/api/v1/oscar/patients/1/allergies",
-  },
+
   {
     get: "/api/v1/oscar/patients/1/measurements",
   },
@@ -119,21 +120,21 @@ const createResult = function (response, api) {
   };
 };
 
-// const postSlack = function (passes, fails, server) {
-//   const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
+const postSlack = function (passes, fails, server) {
+  const msg = `API (${server.apitype}) Endpoint Results - ✅: ${passes}, ❌: ${fails}`;
 
-//   axios({
-//     method: "post",
-//     url: functions.config().slack.devopsurl,
-//     data: { text: msg },
-//   })
-//     .then((res) => {
-//       console.log("Success posting to slack", res);
-//     })
-//     .catch((err) => {
-//       console.log("Error posting to slack: ", err);
-//     });
-// };
+  axios({
+    method: "post",
+    url: functions.config().slack.devopsurl,
+    data: { text: msg },
+  })
+    .then((res) => {
+      console.log("Success posting to slack", res);
+    })
+    .catch((err) => {
+      console.log("Error posting to slack: ", err);
+    });
+};
 
 const queryAPIS = async function (server, auth) {
   console.log(server.endpointURL + apis[0].get + server.suffix);
@@ -186,7 +187,7 @@ const queryAPIS = async function (server, auth) {
   });
 
   // Send successes and fails to slack devops channel
-  // postSlack(successes, failures, server);
+  postSlack(successes, failures, server);
 
   // Commit all batch updates at once
   try {
@@ -224,6 +225,28 @@ const getAuthToken = async function (url, providerNo, token) {
   }
 };
 
+const loginOscar = async function (url, credentials, auth) {
+  try {
+    const response = await axios({
+      method: "post",
+      url: url.server + "/api/v1/oscar/login" + url.suffix,
+      headers: auth,
+      data: {
+        userName: credentials.name,
+        password: credentials.pass,
+        pin: credentials.pin,
+      },
+    });
+
+    console.log("Successful oscar login.");
+    console.log(response);
+    return true;
+  } catch (err) {
+    console.error("Oscar login failed.", err.response);
+    return false;
+  }
+};
+
 exports.scheduledFunction = functions.pubsub
   .schedule("0 0,12 * * *")
   .timeZone("America/New_York")
@@ -244,7 +267,7 @@ exports.scheduledFunction = functions.pubsub
     const signintoken = jwt.sign(
       {
         email: functions.config().kennedy.email,
-        name: functions.config().kennedy.name,
+        name: functions.config().oscar.dev.name,
       },
       "secretsignin"
     );
@@ -297,6 +320,29 @@ exports.scheduledFunction = functions.pubsub
       if (servers[1].auth) console.log("Successful staging token approval.");
     } catch (err) {
       console.log("Error getting jwt approved.", err);
+    }
+
+    // Start oscar session
+    try {
+      if (servers[0].auth) {
+        const credentials = {
+          name: functions.config().oscar.dev.name,
+          pass: functions.config().oscar.dev.pass,
+          pin: functions.config().oscar.dev.pin,
+        };
+        const url =
+          servers[0].endpointURL + "/api/v1/oscar/login" + servers[0].suffix;
+        const success = await loginOscar(
+          url,
+          credentials,
+          servers[0].auth["headers"]
+        );
+        if (success) {
+          console.log("Oscar login successful.");
+        }
+      }
+    } catch (err) {
+      console.log("Oscar login failed.", err);
     }
 
     // Run tests...
