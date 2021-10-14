@@ -13,4 +13,7 @@ module.exports = {
     indent: ["error", 2],
     "max-len": ["error", { code: 125 }],
   },
+  parserOptions: {
+    ecmaVersion: 8,
+  },
 };
