@@ -71,7 +71,7 @@ const apis = [
     body: {
       firstName: "Test",
       lastName: "Patient",
-      email: "test.patient" + uuidv4() + "@gmail.com",
+      email: "test.patient." + uuidv4() + "@gmail.com",
       sex: "M",
       dateOfBirth: "1978-12-31T00:00:00.000Z",
       address: {
